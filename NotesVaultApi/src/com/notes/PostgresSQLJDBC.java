@@ -14,15 +14,13 @@ public class PostgresSQLJDBC {
      */
     public void setupDb() {
         boolean serverStarted = false;
+        
         // Run five times with 3 seconds between to allow server to start
         for(int i =0; i<5; i++) {
-            System.out.println("test");
             try {
-                System.out.println("2");
                 Class.forName("org.postgresql.Driver");
                 c = DriverManager.getConnection("jdbc:postgresql://db:5432/notesdb", "notesuser", "notespass");
                 serverStarted = true;
-                System.out.println("3");
                 break;
             } catch (Exception e) {
                 System.out.println("Waiting for database connection");

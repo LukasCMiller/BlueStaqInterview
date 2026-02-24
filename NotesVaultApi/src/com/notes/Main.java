@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.Set;
 
 public class Main {
     public static void main(String[] args) {
@@ -14,14 +15,20 @@ public class Main {
         PostgresSQLJDBC postgresSQLJDBC = new PostgresSQLJDBC();
         postgresSQLJDBC.setupDb();
 
+        //Setup API key handler to have authentication
+        String apiKey = System.getenv("API_KEY");
+        if (apiKey == null) {
+            System.err.println("API_KEY environment variable not set");
+            System.exit(1);
+        }
+
         try {
             // Create server to listen for requests
             HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-            server.createContext("/notes", new NotesHandler(postgresSQLJDBC));
+            server.createContext("/notes",new ApiKeyAuthHandler(new NotesHandler(postgresSQLJDBC), Set.of(apiKey)));
             server.setExecutor(null);
             server.start();
-
-            System.out.println("Server is running on port 8000");
+            System.out.println("Server is running on port 8080");
         } catch (IOException e) {
             System.out.println("There was an error starting the server");
             System.err.println(e);

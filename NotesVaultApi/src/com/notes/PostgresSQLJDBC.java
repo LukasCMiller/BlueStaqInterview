@@ -119,5 +119,62 @@ public class PostgresSQLJDBC {
             throw new RuntimeException(e);
         }
     }
+
+    public void updateNote(UUID id, String newContent) {
+        String update = "UPDATE note SET content = ? WHERE id = ?";
+        try {
+            PreparedStatement ps = c.prepareStatement(update);
+            ps.setString(1, newContent);
+            ps.setObject(2, id);
+            int rowsAffected = ps.executeUpdate();
+            if (rowsAffected == 0) {
+                System.out.println("No note found with id " + id);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error updating note.");
+            throw new RuntimeException(e);
+        }
+    }
+    public List<Note> searchNotes(String keyword) {
+        String select = "SELECT * FROM note WHERE content LIKE ?";
+        List<Note> notes = new ArrayList<>();
+        try {
+            PreparedStatement ps = c.prepareStatement(select);
+            ps.setString(1, "%" + keyword + "%");
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                System.out.println("Test");
+                UUID id = rs.getObject("id", UUID.class);
+                String content = rs.getString("content");
+                Instant createdAt = rs.getObject("created_at", Timestamp.class).toInstant();
+                notes.add(new Note(id, content, createdAt));
+            }
+            return notes;
+        } catch (SQLException e) {
+            System.err.println("Error searching notes.");
+            throw new RuntimeException(e);
+        }
+    }
+
+    public List<Note> getNotesByDateRange(Instant dateFrom, Instant dateTo) {
+        String select = "SELECT * FROM note WHERE created_at BETWEEN ? AND ?";
+        List<Note> notes = new ArrayList<>();
+        try {
+            PreparedStatement ps = c.prepareStatement(select);
+            ps.setObject(1, Timestamp.from(dateFrom));
+            ps.setObject(2, Timestamp.from(dateTo));
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                UUID id = rs.getObject("id", UUID.class);
+                String content = rs.getString("content");
+                Instant createdAt = rs.getObject("created_at", Timestamp.class).toInstant();
+                notes.add(new Note(id, content, createdAt));
+            }
+            return notes;
+        } catch (SQLException e) {
+            System.err.println("Error filtering notes by date.");
+            throw new RuntimeException(e);
+        }
+    }
 }
 

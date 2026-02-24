@@ -10,6 +10,7 @@ services:
       DB_NAME: notesdb
       DB_USER: notesuser
       DB_PASSWORD: notespass
+      API_KEY: super-secret-key
     depends_on:
       - db
   db:

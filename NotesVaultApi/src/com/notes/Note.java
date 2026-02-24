@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Representaion of UUID for backend
+ * Representaion of Note for backend
  */
 public class Note {
 

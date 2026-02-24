@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
  */
 public class NotesHandler implements HttpHandler {
 
+    private static final int MAX_LENGTH = 1000;
     private static final int HTTP_OK=200;
     private static final int HTTP_CREATED=201;
     private static final int HTTP_NO_CONTENT=204;
@@ -45,6 +46,8 @@ public class NotesHandler implements HttpHandler {
                 handlePost(exchange);
             } else if (exchange.getRequestMethod().equals("DELETE")) {
                 handleDelete(exchange);
+            } else if (exchange.getRequestMethod().equals("PUT")) {
+                handleUpdate(exchange);
             } else {
                 sendResponse(exchange, "Method Not Allowed", HTTP_BAD_REQUEST);
             }
@@ -62,6 +65,7 @@ public class NotesHandler implements HttpHandler {
     private void handleGet(HttpExchange exchange) throws IOException {
         String response = "";
         String path = exchange.getRequestURI().getPath();
+        String query = exchange.getRequestURI().getQuery();
         int returnCode = HTTP_OK;
 
         // Verify if request is asking for one note or many notes
@@ -76,7 +80,27 @@ public class NotesHandler implements HttpHandler {
                 response = "ERROR 400: Expected UUID";
                 returnCode = HTTP_BAD_REQUEST;
             }
-        } else {
+        } else if (query != null && query.startsWith("search=")) {
+            String keyword = query.split("=")[1];
+            List<Note> notes = postgresSQLJDBC.searchNotes(keyword);
+            response = makeNotes(notes);
+        } else if (query != null && query.contains("from=")) {
+            try{
+                String[] queryParam = query.split("=");
+                String[] values = new String[]{queryParam[1].split("&")[0], queryParam[2].split("&")[0]};
+                if (values.length == 2) {
+                    Instant from = Instant.parse(URLDecoder.decode(values[0], StandardCharsets.UTF_8));
+                    Instant to = Instant.parse(URLDecoder.decode(values[1], StandardCharsets.UTF_8));
+                    List<Note> notes = postgresSQLJDBC.getNotesByDateRange(from, to);
+                    response = makeNotes(notes);
+                }
+            } catch (java.lang.Exception e) {
+                System.out.println("Invalid timestamp format");
+                response = "ERROR 400: Invalid timestamp format";
+                returnCode = HTTP_BAD_REQUEST;
+            }
+        }
+        else {
             // Get all notes
             List<Note> notes = postgresSQLJDBC.getAllNotes();
             response = makeNotes(notes);
@@ -92,7 +116,6 @@ public class NotesHandler implements HttpHandler {
     private void handlePost(HttpExchange exchange) throws IOException {
         // Get all parts of the body
         String body = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8)).lines().collect(Collectors.joining("\n"));
-
         UUID id = null;
         String noteContent = null;
         Instant timestamp = null;
@@ -118,11 +141,19 @@ public class NotesHandler implements HttpHandler {
                 }
             } catch (Exception e) {
                 sendResponse(exchange, "ERROR 400: Unexpected error. Null value", HTTP_BAD_REQUEST);
+                return;
             }
         }
 
         // If all were recieved persist and send back 201
         if (id != null && noteContent != null && timestamp != null) {
+
+            // Verify that the length is less than a max length set in the docker-compose file
+            if (noteContent.length() > MAX_LENGTH) {
+                sendResponse(exchange, "ERROR 400: Note content exceeds maximum length of " + MAX_LENGTH + " characters", HTTP_BAD_REQUEST);
+                return;
+            }
+
             Note note = new Note(id, noteContent, timestamp);
             postgresSQLJDBC.persistNote(note);
             String response = "Successfully persisted note";
@@ -131,6 +162,41 @@ public class NotesHandler implements HttpHandler {
             // Otherwise throw an error
             sendResponse(exchange, "ERROR 400: Unexpected error. Null value", HTTP_BAD_REQUEST);
         }
+    }
+
+    private void handleUpdate(HttpExchange exchange) throws IOException {
+        UUID id = parseUUIDFromPath(exchange.getRequestURI().getPath());
+
+        if(id==null){
+            sendResponse(exchange, "ERROR 400: Expected UUID", HTTP_BAD_REQUEST);
+            return;
+        }
+
+        String body = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8))
+                .lines().collect(Collectors.joining("\n"));
+
+        String newContent = null;
+        for (String pair : body.split("&")) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2 && keyValue[0].equals("content")) {
+                newContent = URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8);
+            }
+        }
+
+        if (newContent == null) {
+            System.err.println("ERROR 400: Unexpected error. Null value");
+            sendResponse(exchange, "ERROR 400: Missing content", HTTP_BAD_REQUEST);
+            return;
+        }
+
+        if (newContent.length() > MAX_LENGTH) {
+            System.err.println("ERROR 400: Note content exceeds maximum length");
+            sendResponse(exchange, "ERROR 400: Note content exceeds maximum length", HTTP_BAD_REQUEST);
+            return;
+        }
+
+        postgresSQLJDBC.updateNote(id, newContent);
+        sendResponse(exchange, "Successfully updated note", HTTP_OK);
     }
 
     /**
@@ -145,8 +211,7 @@ public class NotesHandler implements HttpHandler {
         // So long as the ID is not null delete note
         if (id != null) {
             postgresSQLJDBC.deleteNote(id);
-            String response = "Successfully deleted note";
-            sendResponse(exchange, response, HTTP_NO_CONTENT);
+            sendResponse(exchange, "", HTTP_NO_CONTENT);
             return;
         }
 
@@ -163,7 +228,6 @@ public class NotesHandler implements HttpHandler {
      * @throws IOException
      */
     private void sendResponse(HttpExchange exchange,String response, int code) throws IOException {
-        System.out.println(exchange.getResponseBody());
         exchange.sendResponseHeaders(code, response.length());
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());

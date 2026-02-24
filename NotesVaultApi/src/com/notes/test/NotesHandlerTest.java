@@ -43,6 +43,29 @@ public class NotesHandlerTest {
         }
 
         @Override
+        public void updateNote(UUID id, String newContent) {
+            System.out.println("Mock update: " + id + " with content: " + newContent);
+        }
+
+        @Override
+        public List<Note> searchNotes(String keyword) {
+            // Return test note if keyword matches, empty list otherwise
+            if (TEST_NOTE.getContent().contains(keyword)) {
+                return List.of(TEST_NOTE);
+            }
+            return List.of();
+        }
+
+        @Override
+        public List<Note> getNotesByDateRange(Instant from, Instant to) {
+            Instant createdAt = TEST_NOTE.getCreatedAt();
+            if (!createdAt.isBefore(from) && !createdAt.isAfter(to)) {
+                return List.of(TEST_NOTE);
+            }
+            return List.of();
+        }
+
+        @Override
         public void setupDb() {
             System.out.println("Mock setupDb");
         }
@@ -57,22 +80,32 @@ public class NotesHandlerTest {
         NotesHandler notesHandler = new NotesHandler(mockDB);
 
         // Start the server
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(8081), 0);
         server.createContext("/notes", notesHandler);
         server.setExecutor(null);
         server.start();
 
-        // Run tests
+        // Run all tests
         testGetAllNotes();
         testGetNoteById();
         testPostValidNote();
-        testDeleteNote();
         testErrorResponsesForPost();
         testErrorMessageForGetNoteById();
         testErrorResponsesForDeleteNote();
+        testUpdateNote();
+        testUpdateNoteInvalidUUID();
+        testUpdateNoteMissingContent();
+        testUpdateNoteTooLong();
+        testSearchNotes();
+        testSearchNotesNoMatch();
+        testFilterNotesByDateInRange();
+        testFilterNotesByDateOutOfRange();
+        testFilterNotesInvalidTimestamp();
+        testPostNoteTooLong();
 
-        // Stop the server
+        // Make sure to stop the server and indicate to user that everything looked good
         server.stop(0);
+        System.out.println("All tests passed.");
     }
 
     /**
@@ -80,7 +113,7 @@ public class NotesHandlerTest {
      * @throws Exception
      */
     private static void testGetAllNotes() throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes").toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes").toURL().openConnection();
         connection.setRequestMethod("GET");
         connection.connect();
 
@@ -97,7 +130,7 @@ public class NotesHandlerTest {
      */
     private static void testGetNoteById() throws Exception {
         UUID id = UUID.randomUUID();
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes/" + id).toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/" + id).toURL().openConnection();
         connection.setRequestMethod("GET");
         connection.connect();
 
@@ -121,7 +154,7 @@ public class NotesHandlerTest {
 
         String requestBody = "id=" + id + "&content=" + content + "&timestamp=" + timestamp;
 
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes").toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes").toURL().openConnection();
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -136,18 +169,130 @@ public class NotesHandlerTest {
     }
 
     /**
+     * Test the update call
+     * @throws Exception
+     */
+    private static void testUpdateNote() throws Exception {
+        String requestBody = "content=Yippie Im getting updated";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/" + UUID.randomUUID()).toURL().openConnection();
+        connection.setRequestMethod("PUT");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(requestBody.getBytes());
+        }
+
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for update";
+        System.out.println("PUT update note test passed.");
+    }
+
+    /**
+     * Test the search call by looking for test in the note
+     * @throws Exception
+     */
+    private static void testSearchNotes() throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?search=Test").toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for search";
+        String response = getStringFromInputStream(connection);
+        assert response.contains(TEST_NOTE.toString()) : "Expected search to return matching note";
+        System.out.println("GET search notes match test passed.");
+    }
+
+    /**
+     * Test filtering on valid time
+     * @throws Exception
+     */
+    private static void testFilterNotes() throws Exception {
+        // Cover time for Instant.now to be covered
+        String from = "2020-01-01T00:00:00Z";
+        String to = "2099-01-01T00:00:00Z";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?from=" + from + "&to=" + to).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for date filter";
+        String response = getStringFromInputStream(connection);
+        assert response.contains(TEST_NOTE.toString()) : "Expected note to appear in date range";
+        System.out.println("GET filter notes in range test passed.");
+    }
+
+    /**
+     * Test searching but for a value that doesnt exist in the mock db
+     * @throws Exception
+     */
+    private static void testSearchNotesNoMatch() throws Exception {
+        // Make it so instant.now wont happen
+        String from = "2000-01-01T00:00:00Z";
+        String to = "2001-01-01T00:00:00Z";
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?search=NOMATCHWILLHAPPEN").toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for search with no results";
+        String response = getStringFromInputStream(connection);
+        assert response.isEmpty() : "Expected empty response for no matching notes";
+        System.out.println("GET search notes no match test passed.");
+    }
+
+    private static void testFilterNotesByDateInRange() throws Exception {
+        // Use a wide range that will contain TEST_NOTE's Instant.now() timestamp
+        String from = "2020-01-01T00:00:00Z";
+        String to = "2099-01-01T00:00:00Z";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?from=" + from + "&to=" + to).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        System.out.println(connection.getResponseCode());
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for date filter";
+        String response = getStringFromInputStream(connection);
+        assert response.contains(TEST_NOTE.toString()) : "Expected note to appear in date range";
+        System.out.println("GET filter notes in range test passed.");
+    }
+
+    /**
+     * Test that even when note is out of range no error happens
+     * @throws Exception
+     */
+    private static void testFilterNotesByDateOutOfRange() throws Exception {
+        // Use a range in the past that wont contain TEST_NOTE's Instant.now() timestamp
+        String from = "2000-01-01T00:00:00Z";
+        String to = "2001-01-01T00:00:00Z";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?from=" + from + "&to=" + to).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        assert connection.getResponseCode() == 200 : "Expected 200 OK for date filter";
+        String response = getStringFromInputStream(connection);
+        assert response.isEmpty() : "Expected no notes outside date range";
+        System.out.println("GET filter notes out of range test passed.");
+    }
+
+    /**
      * Test deleting a specific note
      * @throws Exception
      */
     private static void testDeleteNote() throws Exception {
         UUID id = UUID.randomUUID();
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes/" + id).toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/" + id).toURL().openConnection();
         connection.setRequestMethod("DELETE");
         connection.connect();
 
         assert connection.getResponseCode() == 204 : "Expected 204 No Content";
         System.out.println("DELETE note test passed.");
     }
+
+
+    /****************************
+     * Error tests
+     ****************************/
 
     /**
      * Test to make sure we send back a 400 on post when body is incorrect
@@ -163,7 +308,7 @@ public class NotesHandlerTest {
         // Make the request body nonsense
         String requestBody = "id= I AM NOT A UUID" + "&content=" + 123 + "&timestamp=" + 5678.0;
 
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes").toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes").toURL().openConnection();
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -182,7 +327,7 @@ public class NotesHandlerTest {
      * @throws Exception
      */
     private static void testErrorMessageForGetNoteById() throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes/IAMNOTAUUID").toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/IAMNOTAUUID").toURL().openConnection();
         connection.setRequestMethod("GET");
         connection.connect();
 
@@ -192,11 +337,107 @@ public class NotesHandlerTest {
     }
 
     /**
+     * Verify that the length requierment works
+     * @throws Exception
+     */
+    private static void testPostNoteTooLong() throws Exception {
+        String longContent = "a".repeat(1001);
+        String requestBody = "id=" + UUID.randomUUID() + "&content=" + longContent + "&timestamp=" + Instant.now();
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes").toURL().openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(requestBody.getBytes());
+        }
+
+        assert connection.getResponseCode() == 400 : "Expected 400 for content that is too long";
+        System.out.println("POST note too long test passed.");
+    }
+
+    /**
+     * Try and update with an invalid UUID type
+     * @throws Exception
+     */
+    private static void testUpdateNoteInvalidUUID() throws Exception {
+        String requestBody = "content=Updated Content";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/IAMNOTAUUID").toURL().openConnection();
+        connection.setRequestMethod("PUT");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(requestBody.getBytes());
+        }
+
+        assert connection.getResponseCode() == 400 : "Expected 400 for invalid UUID on update";
+        System.out.println("PUT update invalid UUID test passed.");
+    }
+
+    /**
+     * Try and update with content that is incorrect in the path
+     * @throws Exception
+     */
+    private static void testUpdateNoteMissingContent() throws Exception {
+        String requestBody = "somefield=somevalue";
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/" + UUID.randomUUID()).toURL().openConnection();
+        connection.setRequestMethod("PUT");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(requestBody.getBytes());
+        }
+
+        assert connection.getResponseCode() == 400 : "Expected 400 for missing content on update";
+        System.out.println("PUT update missing content test passed.");
+    }
+
+    /**
+     * Test updating when the note is too long to verify length requierment works
+     * @throws Exception
+     */
+    private static void testUpdateNoteTooLong() throws Exception {
+        String longContent = "a".repeat(1001);
+        String requestBody = "content=" + longContent;
+
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/" + UUID.randomUUID()).toURL().openConnection();
+        connection.setRequestMethod("PUT");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        try (OutputStream os = connection.getOutputStream()) {
+            os.write(requestBody.getBytes());
+        }
+
+        assert connection.getResponseCode() == 400 : "Expected 400 for content too long on update";
+        System.out.println("PUT update note too long test passed.");
+    }
+
+    /**
+     * Test to verify that timestamp works
+     * @throws Exception
+     */
+    private static void testFilterNotesInvalidTimestamp() throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes?from=NOTADATE").toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.connect();
+
+        assert connection.getResponseCode() == 400 : "Expected 400 for invalid timestamp";
+        System.out.println("GET filter invalid timestamp test passed.");
+        connection.disconnect();
+    }
+
+    /**
      * Test to verify we get a 400 with a non UUID
      * @throws Exception
      */
     private static void testErrorResponsesForDeleteNote() throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8080/notes/IAMNOTAUUID").toURL().openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URI("http://localhost:8081/notes/IAMNOTAUUID").toURL().openConnection();
         connection.setRequestMethod("DELETE");
         connection.connect();
 

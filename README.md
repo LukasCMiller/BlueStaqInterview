@@ -23,7 +23,8 @@ To run the API level tests run runAPITests.sh. NOTE for API tests to work you wi
 
 · API usage examples
 The way I tested it was via curl. I felt like this was a solid way to verify the endpoints
-worked in the correct fashion. Here are examples of each of the different endpoints: 
+worked in the correct fashion. 
+Here are examples of each of the different endpoints: 
 curl -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=I am a note&timestamp=2025-12-27T04:50:49.438530490Z" localhost:8080/notes
 to insert. curl localhost:8080/notes to get all notes. curl localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf. curl -X DELETE localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf.
 NOTE all the UUIDs need to match to handle all requests correctly.
@@ -37,6 +38,6 @@ app needed to grow it would run into issues running. I put the database on a sep
 if the app crashes for some reason the database will stay up however this takes more resources than just
 running them together in one pod. The reason I chose a postgresql database was because in memory felt too
 limited. You would only ever be able to have X number of notes but there would be some advantages such as being
-able to access notes quickly. I didnt use a noSQL database mainly due to lack of familiarity with it.
+able to access notes quickly. I didn't use a noSQL database mainly due to lack of familiarity with it.
 Future improvements: Adding both in app memory along with a database with a LRU algorithm after X number of notes. Say
 after 100 notes are stored we would move the LRU note to the database to allow for recently used notes to be faster access.

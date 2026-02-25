@@ -41,80 +41,75 @@ worked in the correct fashion since I can directly use them.
 Here are examples of each of the different endpoints: 
 
 Create a note
-curl -X POST -H "X-API-Key: super-secret-key" \
-  -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=I am a note&timestamp=2026-02-23T01:25:19.013092Z" \
-  localhost:8080/notes
+
+curl -X POST -H "X-API-Key: super-secret-key" -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=I am a note&timestamp=2026-02-23T01:25:19.013092Z" localhost:8080/notes
 
 Get all notes
-curl -H "X-API-Key: super-secret-key" \
-  localhost:8080/notes
+
+curl -H "X-API-Key: super-secret-key" localhost:8080/notes
 
 Get a specific note
-curl -H "X-API-Key: super-secret-key" \
-  localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
+
+curl -H "X-API-Key: super-secret-key" localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
 
 Update a note
-curl -X PUT -H "X-API-Key: super-secret-key" \
-  -d "content=I am an updated note" \
-  localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
+
+curl -X PUT -H "X-API-Key: super-secret-key" -d "content=I am an updated note" localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
 
 Search notes by keyword
-curl -H "X-API-Key: super-secret-key" \
-  "localhost:8080/notes?search=updated"
+
+curl -H "X-API-Key: super-secret-key" "localhost:8080/notes?search=updated"
 
 Filter notes by date range
-curl -H "X-API-Key: super-secret-key" \
-  "localhost:8080/notes?from=2026-01-01T00:00:00Z&to=2026-12-31T00:00:00Z"
+
+curl -H "X-API-Key: super-secret-key" "localhost:8080/notes?from=2026-01-01T00:00:00Z&to=2026-12-31T00:00:00Z"
 
 Delete a note
-curl -X DELETE -H "X-API-Key: super-secret-key" \
-  localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
+
+curl -X DELETE -H "X-API-Key: super-secret-key" localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
 
 And to check some error cases:
 
 Missing API key - expect 401
+
 curl localhost:8080/notes
 
 Wrong API key - expect 401
+
 curl -H "X-API-Key: wrongkey" localhost:8080/notes
 
 Get note with invalid UUID - expect 400
-curl -H "X-API-Key: super-secret-key" \
-  localhost:8080/notes/IAMNOTAUUID
+
+curl -H "X-API-Key: super-secret-key" localhost:8080/notes/IAMNOTAUUID
 
 Create note with invalid UUID - expect 400
-curl -X POST -H "X-API-Key: super-secret-key" \
-  -d "id=IAMNOTAUUID&content=I am a note&timestamp=2026-02-23T01:25:19.013092Z" \
-  localhost:8080/notes
+
+curl -X POST -H "X-API-Key: super-secret-key" -d "id=IAMNOTAUUID&content=I am a note&timestamp=2026-02-23T01:25:19.013092Z" localhost:8080/notes
 
 Create note with invalid timestamp - expect 400
-curl -X POST -H "X-API-Key: super-secret-key" \
-  -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=I am a note&timestamp=IAMNOTATIMESTAMP" \
-  localhost:8080/notes
+
+curl -X POST -H "X-API-Key: super-secret-key" -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=I am a note&timestamp=IAMNOTATIMESTAMP" localhost:8080/notes
 
   
 Create note with content too long - expect 400 NOTE: This command requires Python3
-curl -X POST -H "X-API-Key: super-secret-key" \
-  -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=$(python3 -c 'print("a"*1001)')&timestamp=2026-02-23T01:25:19.013092Z" \
-  localhost:8080/notes
+
+curl -X POST -H "X-API-Key: super-secret-key" -d "id=c337dd2a-5f58-49c3-b282-d0c476ad5bdf&content=$(python3 -c 'print("a"*1001)')&timestamp=2026-02-23T01:25:19.013092Z" localhost:8080/notes
 
 Update note with content too long - expect 400 NOTE: This command required Python3
-curl -X PUT -H "X-API-Key: super-secret-key" \
-  -d "content=$(python3 -c 'print("a"*1001)')" \
-  localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
+
+curl -X PUT -H "X-API-Key: super-secret-key" -d "content=$(python3 -c 'print("a"*1001)')" localhost:8080/notes/c337dd2a-5f58-49c3-b282-d0c476ad5bdf
 
 Update note with invalid UUID - expect 400
-curl -X PUT -H "X-API-Key: super-secret-key" \
-  -d "content=updated content" \
-  localhost:8080/notes/IAMNOTAUUID
+
+curl -X PUT -H "X-API-Key: super-secret-key" -d "content=updated content" localhost:8080/notes/IAMNOTAUUID
 
 Filter with invalid timestamp - expect 400
-curl -H "X-API-Key: super-secret-key" \
-  "localhost:8080/notes?from=IAMNOTATIMESTAMP"
+
+curl -H "X-API-Key: super-secret-key" "localhost:8080/notes?from=IAMNOTATIMESTAMP"
 
 Delete note with invalid UUID - expect 400
-curl -X DELETE -H "X-API-Key: super-secret-key" \
-  localhost:8080/notes/IAMNOTAUUID
+
+curl -X DELETE -H "X-API-Key: super-secret-key" localhost:8080/notes/IAMNOTAUUID
 
 
 # Assumptions, tradeoffs, and future improvements
